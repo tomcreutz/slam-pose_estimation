@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.5)
 project(pose_estimation VERSION "0.1.0")
 
-set(CMAKE_CONFIG_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake")
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CONFIG_PATH}")
-
 set(pose_estimation_LIBRARY ${PROJECT_NAME})
+# Default to C++17
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-std=c++17 -Wall -Wextra -Wpedantic)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -16,75 +20,57 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-if(POLICY CMP0057)
-  cmake_policy(SET CMP0057 NEW)
-endif()
+find_package(ament_cmake REQUIRED)
 
-# include(AddMTK)
-# add_subdirectory(extern/mtk)
-option(PACKAGE_TESTS "Build the tests" ON)
+find_package(Eigen3 REQUIRED)
+find_package(GDAL REQUIRED)
+find_package(mtk REQUIRED)
 
-find_package(ament_cmake QUIET)
-
-if(ament_cmake_FOUND)
-  add_definitions(-DUSING_ROS2)
-  message(STATUS "------------------------------------------")
-  message(STATUS "BehaviourTree is being built using AMENT.")
-  message(STATUS "------------------------------------------")
-  include(cmake/ament_build.cmake)
-
-elseif(CATKIN_DEVEL_PREFIX OR CATKIN_BUILD_BINARY_PACKAGE)
-  add_definitions(-DUSING_ROS)
-  message(STATUS "------------------------------------------")
-  message(STATUS "BehaviourTree is being built using CATKIN.")
-  message(STATUS "------------------------------------------")
-  include(cmake/catkin_build.cmake)
-  set(catkin_FOUND TRUE)
-else()
-  message(STATUS "------------------------------------------")
-  message(STATUS "BehaviourTree is being built with conan.")
-  message(STATUS "------------------------------------------")
-  include(cmake/conan_build.cmake)
-endif()
-
-list(APPEND pose_estimation_SOURCE
-  src/GeographicProjection.cpp
-  src/pose_with_velocity/PoseUKF.cpp
-  src/orientation_estimator/OrientationUKF.cpp
-)
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON) # ? - https://github.com/BehaviorTree/BehaviorTree.CPP/blob/master/CMakeLists.txt#L147
-add_library(${pose_estimation_LIBRARY} SHARED
-  ${pose_estimation_SOURCE}
+add_library(${PROJECT_NAME} SHARED
+src/GeographicProjection.cpp
+src/pose_with_velocity/PoseUKF.cpp
+src/orientation_estimator/OrientationUKF.cpp
 )
 
-target_link_libraries(${pose_estimation_LIBRARY}
-  PRIVATE
-  ${CMAKE_DL_LIBS}
-  ${pose_estimation_EXTRA_LIBRARIES}
-)
+target_compile_definitions(${PROJECT_NAME} PRIVATE "AMENT_INDEX_CPP_BUILDING_DLL")
 
-target_include_directories(${pose_estimation_LIBRARY}
-  PUBLIC
+target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+  $<INSTALL_INTERFACE:include>
+  )
+
+target_link_libraries(${PROJECT_NAME}
   PRIVATE
-  ${pose_estimation_EXTRA_INCLUDE_DIRS}
+  Eigen3::Eigen
+  GDAL::GDAL
+  mtk::mtk
 )
 
-target_compile_definitions(${pose_estimation_LIBRARY} PUBLIC pose_estimation_LIBRARY_VERSION="${CMAKE_PROJECT_VERSION}")
+ament_export_include_directories(include)
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_libraries(${PROJECT_NAME})
 
-target_compile_features(${pose_estimation_LIBRARY} PUBLIC cxx_std_17)
+# Todo(tcreutz): Tests
+# if(BUILD_TESTING)
+#   find_package(ament_lint_auto REQUIRED)
+#   # prevent cppcheck from being found, since it fails to process the file utest.cpp
+#   set(ament_cmake_cppcheck_FOUND TRUE)
+#   ament_lint_auto_find_test_dependencies()
 
-INSTALL(TARGETS ${pose_estimation_LIBRARY}
-  EXPORT ${PROJECT_NAME}Targets
-  ARCHIVE DESTINATION ${pose_estimation_LIB_DESTINATION}
-  LIBRARY DESTINATION ${pose_estimation_LIB_DESTINATION}
-  RUNTIME DESTINATION ${pose_estimation_BIN_DESTINATION}
-  INCLUDES DESTINATION ${pose_estimation_INCLUDE_DESTINATION}
-)
+#   ament_add_gtest(${PROJECT_NAME}_utest test/utest.cpp)
+#   if(TARGET ${PROJECT_NAME}_utest)
+#     target_include_directories(${PROJECT_NAME}_utest PUBLIC include)
+#     target_link_libraries(${PROJECT_NAME}_utest ${PROJECT_NAME})
+#   endif()
+# endif()
 
-INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-  DESTINATION ${pose_estimation_INCLUDE_DESTINATION}
-  FILES_MATCHING PATTERN "*.h*")
+ament_package()
 
-export_pose_estimation_package()
+install(DIRECTORY include/
+  DESTINATION include)
+
+install(TARGETS ${PROJECT_NAME}
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
