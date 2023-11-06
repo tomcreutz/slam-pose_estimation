@@ -7,7 +7,6 @@
 #include <chrono>
 #include <ukfom/ukf.hpp>
 #include <ukfom/mtkwrap.hpp>
-#include <boost/noncopyable.hpp>
 
 namespace pose_estimation
 {
